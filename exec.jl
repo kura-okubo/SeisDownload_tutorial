@@ -11,16 +11,19 @@ NP = 4 # number of processor
 DownloadType = "Noise" # Choise of "Noise" or "Earthquake"
 
 network     = ["BP"]
-station     = ["LCCB", "MMNB"]
+# station     = ["LCCB", "MMNB"]
+station = ["CCRB","EADB","FROB","GHIB","JCNB","JCSB","LCCB","MMNB","SCYB","SMNB","VARB","VCAB"]
+
 location    = [""]
-channel     = ["BP1", "BP2"]
+channel     = ["BP1", "BP2", "BP3"]
 datacenter  = "FDSN" #Data center
 src         = "NCEDC"
 
 # Time info for Noise case
-starttime   = DateTime(2004,9,28,0,0,0)
-endtime     = DateTime(2004,9,28,12,0,0)
-DL_time_unit = 3600 * 2 #3600 * 24 # Download tiem unit [s] more than one day is better to avoid artifacts of response removal
+starttime   = DateTime(2004,9,25,0,0,0)
+endtime     = DateTime(2004,9,26,0,0,0)
+#endtime     = DateTime(2004,10,2,0,0,0)
+DL_time_unit = 3600 * 24 #3600 * 24 # Download tiem unit [s] more than one day is better to avoid artifacts of response removal
 
 pre_filt    = (0.001, 0.002, 10.0, 20.0) #prefilter tuple used obspy remove_response: taper between f1 and f2, f3 and f4 with obspy
 
@@ -75,4 +78,4 @@ InputDictionary = Dict([
 
 
 # mass request with input Dictionary
-ParallelSeisrequest(NP, InputDictionary)
+SeisDownload.ParallelSeisrequest(NP, InputDictionary)
