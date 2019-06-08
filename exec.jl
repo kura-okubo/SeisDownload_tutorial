@@ -11,19 +11,19 @@ NP = 4 # number of processor
 DownloadType = "Noise" # Choise of "Noise" or "Earthquake"
 
 network     = ["BP"]
-# station     = ["LCCB", "MMNB"]
-station = ["CCRB","EADB","FROB","GHIB","JCNB","JCSB","LCCB","MMNB","SCYB","SMNB","VARB","VCAB"]
+station     = ["LCCB", "HQUAKE"]
+#station = ["CCRB","EADB","FROB","GHIB","JCNB","JCSB","LCCB","MMNB","SCYB","SMNB","VARB","VCAB"]
 
 location    = [""]
-channel     = ["BP1", "BP2", "BP3"]
+channel     = ["BP1"]
 datacenter  = "FDSN" #Data center
 src         = "NCEDC"
 
 # Time info for Noise case
 starttime   = DateTime(2004,9,25,0,0,0)
-endtime     = DateTime(2004,9,26,0,0,0)
+endtime     = DateTime(2004,9,25,3,0,0)
 #endtime     = DateTime(2004,10,2,0,0,0)
-DL_time_unit = 3600 * 24 #3600 * 24 # Download tiem unit [s] more than one day is better to avoid artifacts of response removal
+DL_time_unit = 3600 * 1 #3600 * 24 # Download tiem unit [s] more than one day is better to avoid artifacts of response removal
 
 pre_filt    = (0.001, 0.002, 10.0, 20.0) #prefilter tuple used obspy remove_response: taper between f1 and f2, f3 and f4 with obspy
 
