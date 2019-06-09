@@ -12,4 +12,4 @@ reg = [-46.1691, -40.0662, 166.6531, 176.3965] #Specify region [lat_min, lat_max
 #ex = :(get_data($(argv[1]), $(argv[2]), s=$(argv[3]), t=$(argv[4]), v=$(argv[5]), src=$(argv[6]), w=$(argv[7]), xf=$(argv[8])))
 #eval(ex)
 
-S = get_data("FDSN", "NZ.*.*.HH*", s=string(starttime), t=(30*60), reg=reg, v=2)
+S = get_data("FDSN", "NZ.*.*.HH*", s=string(starttime), t=string(endtime), reg=reg, v=2)

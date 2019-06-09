@@ -1,20 +1,21 @@
 using SeisIO, Dates, Distributed, LightXML
 
 # with β version, please import SeisDownload.jl from the src directory as follows
-include("../src/SeisDownload.jl")
+#include("../src/SeisDownload.jl")
+include("./src/SeisDownload.jl")
 using .SeisDownload
 
 
 #==================================================#
 # Input Parameters
-NP = 4 # number of processor
+NP = 2 # number of processor
 MAX_MEM_PER_CPU = 2.0 # [GB] maximum allocated memory for one cpu
 DownloadType = "Earthquake" # Choise of "Noise" or "Earthquake"
 
 network     = ["NZ"]
 station     = ["*"]
 location    = ["*"]
-channel     = ["HH*"]
+channel     = ["HH?"]
 
 #Specify region [lat_min, lat_max, lon_min, lon_max, dep_min, dep_max], with lat, lon in decimal degrees (°) and depth in km with + = down.
 #dep_min and dep_max is optional.
@@ -25,7 +26,7 @@ locationbox = [-46.1691, -40.0662, 166.6531, 176.3965]
 method  = "FDSN" # Method to download data.
 
 SecondsBeforePick = 10 # [s] start downloading `SecondsBeforePick`[s] before picked time
-SecondsAfterPick  = 30 * 60 # [s] end downloading `SecondsBeforePick`[s] after picked time
+SecondsAfterPick  = 2 * 60 # [s] end downloading `SecondsBeforePick`[s] after picked time
 
 # Time info for Noise case
 catalog  = "./Earthquake/fdsnws-event_example.xml"
@@ -67,14 +68,8 @@ for i = 1:Ne
 
     #---Lat-long test with one phase pick among all stations---#
 
-    Npicks = 1
+    Npicks = 2
     println("index of quake ", i, " Number of picks  ",Npicks)
-
-    # create a dictionary for each quake with channel information and time.
-    ptime=Vector{String}(undef,Npicks)
-    net=Vector{String}(undef,Npicks)
-    sta=Vector{String}(undef,Npicks)
-    cha=Vector{String}(undef,Npicks)
 
     #event information
     publicid    = attribute(ev[i]["origin"][1], "publicID")
@@ -83,12 +78,18 @@ for i = 1:Ne
     latitude    = content(ev[i]["origin"][1]["latitude"][1])[2:end-1]
     longitude   = content(ev[i]["origin"][1]["longitude"][1])[2:end-1]
     depth       = content(ev[i]["origin"][1]["depth"][1])[2:end-1]
-    origin      = Dict("publicid" => publicid, "catalog" => catalog, "time" => time, "latitude"=>latitude, "longitude"=>longitude, "depth"=>depth)
+    magnitude   = content(ev[i]["magnitude"][1]["mag"][1])[2:end-1]
+    type        = content(ev[i]["magnitude"][1]["type"][1])
+    origin      = Dict("publicid" => publicid, "catalog" => catalog, "time" => time,
+    "latitude"=>latitude, "longitude"=>longitude, "depth"=>depth, "magnitude"=>magnitude, "type"=>type)
 
     # loop through all phase picked
+    # create a dictionary for each quake with channel information and time.
+    ptime=Vector{String}(undef,Npicks)
     net=Vector{String}(undef,Npicks)
     sta=Vector{String}(undef,Npicks)
     cha=Vector{String}(undef,Npicks)
+    loc=Vector{String}(undef,Npicks)
 
     pickphase_dict = []
 
@@ -100,6 +101,10 @@ for i = 1:Ne
         #net[j] = dict2["events"][i]["picks"][j]["waveform_id"]["network_code"] # network code
         #sta[j] = dict2["events"][i]["picks"][j]["waveform_id"]["station_code"] # station code
         #cha[j] = dict2["events"][i]["picks"][j]["waveform_id"]["channel_code"] # channel code
+        net[j] = network[1] # network code
+        sta[j] = station[1] # station code
+        loc[j] = location[1] # station code
+        cha[j] = channel[1] # channel code
 
         # prints for sanity checkes
         # println(ptime[j]," ",net[j]," ",sta[j]," ",cha[j])
@@ -123,7 +128,7 @@ for i = 1:Ne
         println(endtime)
 
         pdict_temp = Dict("starttime" => starttime, "endtime" => endtime,
-         "net" => net, "sta" => sta, "cha" => cha)
+         "net" => net[j], "sta" => sta[j], "loc" => loc[j], "cha" => cha[j])
 
         push!(pickphase_dict, pdict_temp)
 
@@ -143,7 +148,7 @@ IsLocationBox ? reg=locationbox : reg=[]
 
 InputDictionary = Dict([
       "DownloadType"    => DownloadType,
-      "Method "         => method,
+      "method"          => method,
       "event"           => event,
       "reg"             => reg,
       "pre_filt"        => pre_filt,
