@@ -22,73 +22,284 @@ using .Remove_response_obspy
 # Arguments
 - `NP`           : number of processors
 - `InputDict`    : dictionary which contains request information
+- `MAX_MEM_PER_CPU` : maximum available memory for 1 cpu [GB] (default = 1.0GB)
 """
-function ParallelSeisrequest(NP::Int, InputDict::Dict)
+function ParallelSeisrequest(NP::Int, InputDict::Dict; MAX_MEM_PER_CPU::Float64=1.0)
 
     Utils.initlogo()
 
-    #stationlist
-    stationlist     = InputDict["stationinfo"]["stationlist"]
-    starttime       = InputDict["starttime"]
-    endtime         = InputDict["endtime"]
-    DL_time_unit    = InputDict["DL_time_unit"]
-    DownloadType    = InputDict["DownloadType"]
-    fopath          = InputDict["fopath"]
+	DownloadType    = InputDict["DownloadType"]
 
-    if mod((endtime - starttime).value,  DL_time_unit) != 0 || (endtime - starttime).value < DL_time_unit
-        error("Total download time cannot be devided by Download Time unit; this may cause unexpected result. abort.")
-    end
-
-    # calculate start time list (starttimelist) with each Donwload_time_unit
-    starttimelist = Utils.get_starttimelist(starttime, endtime, DL_time_unit)
-    # generate DLtimestamplist and ststationlist
-    DLtimestamplist = Utils.get_timestamplist(starttimelist)
-
-    InputDict["starttimelist"] = starttimelist
-    InputDict["DLtimestamplist"] = DLtimestamplist
-
-    #save info into jld2
-    jldopen(fopath, "w") do file
-        file["info/DLtimestamplist"] = DLtimestamplist;
-        file["info/stationlist"] = stationlist;
-        file["info/starttime"]   = string(starttime)
-        file["info/endtime"]     = string(endtime)
-        file["info/DL_time_unit"]= string(DL_time_unit)
-    end
-
-    #parallelization by time
-    #use all processors
     if DownloadType == "Noise" || DownloadType == "noise"
-        S = pmap(x -> seisdownload_NOISE(x, InputDict), 1:length(starttimelist))
+
+		#stationlist
+		stationlist     = InputDict["stationinfo"]["stationlist"]
+		starttime       = InputDict["starttime"]
+		endtime         = InputDict["endtime"]
+		DL_time_unit    = InputDict["DL_time_unit"]
+		DownloadType    = InputDict["DownloadType"]
+		fopath          = InputDict["fopath"]
+
+		if mod((endtime - starttime).value,  DL_time_unit) != 0 || (endtime - starttime).value < DL_time_unit
+			error("Total download time cannot be devided by Download Time unit; this may cause unexpected result. abort.")
+		end
+
+		# calculate start time list (starttimelist) with each Donwload_time_unit
+		starttimelist = Utils.get_starttimelist(starttime, endtime, DL_time_unit)
+		# generate DLtimestamplist and ststationlist
+		DLtimestamplist = Utils.get_timestamplist(starttimelist)
+
+		InputDict["starttimelist"] = starttimelist
+		InputDict["DLtimestamplist"] = DLtimestamplist
+
+		#save info into jld2
+		jldopen(fopath, "w") do file
+			file["info/DLtimestamplist"] = DLtimestamplist;
+			file["info/stationlist"] = stationlist;
+			file["info/starttime"]   = string(starttime)
+			file["info/endtime"]     = string(endtime)
+			file["info/DL_time_unit"]= string(DL_time_unit)
+		end
+
+        #Test download to evaluate use of memory and estimate download time.
+		println("-------TEST DONWLOAD START-----------")
+        t = @elapsed Stest = seisdownload_NOISE(1, InputDict) #[s]
+        mem_per_requestid = 1.2 * sizeof(Stest) / 1073741824.0 #[GB] *for the safty, required memory is multiplied by 1.2
+
+        max_num_of_processes_per_parallelcycle = floor(Int64, MAX_MEM_PER_CPU/mem_per_requestid)
+        estimated_downloadtime = now() + Second(round(10 * t * length(starttimelist) / NP))
+
+		println(mem_per_requestid)
+		println(max_num_of_processes_per_parallelcycle)
+		println("-------DOWNLOAD STATS SUMMARY------")
+
+		println(@sprintf("Number of processors is %d.", NP))
+		println(@sprintf("Total download size will be %4.8f [GB].", mem_per_requestid * length(starttimelist)))
+		println(@sprintf("Download will finish at %s.", round(estimated_downloadtime, Dates.Second(1))))
+
+		println("-------START DOWNLOADING-----------")
+
+        if max_num_of_processes_per_parallelcycle < 1
+            error("Memory allocation is not enought (currently $MAX_MEM_PER_CPU [GB]). Please inclease MAX_MEM_PER_CPU or decrease number of stations")
+        end
+
+        if max_num_of_processes_per_parallelcycle >= length(starttimelist)
+
+            S = pmap(x -> seisdownload_NOISE(x, InputDict), 1:length(starttimelist))
+
+            # save data to jld2
+            file = jldopen(fopath, "r+")
+            unavalilablefile = jldopen(join([fopath[1:end-5], "_unavailablestations.jld2"]), "w+")
+
+            for ii = 1:size(S)[1] #loop at each starttime
+                for jj = 1:size(S[1])[1] #loop at each station id
+
+                    requeststr =S[ii][jj].id
+                    varname = joinpath(DLtimestamplist[ii], requeststr)
+                    #save_SeisData2JLD2(fopath, varname, S[ii][jj])
+                    file[varname] = S[ii][jj]
+
+                    if S[ii][jj].misc["dlerror"] == 1
+                        unavalilablefile[varname] = S[ii][jj]
+                    end
+                end
+            end
+            JLD2.close(file)
+            JLD2.close(unavalilablefile)
+
+        else
+
+            #parallelization by time
+    	    pitr = 1
+
+    	    # progress bar
+
+    	    while pitr <=  length(starttimelist)
+
+    	        startid1 = pitr
+    	        startid2 = pitr + max_num_of_processes_per_parallelcycle - 1
+
+    	        if startid2 <= length(starttimelist)
+    	            #use all processors
+	                S = pmap(x -> seisdownload_NOISE(x, InputDict), startid1:startid2)
+
+    	        else
+    	            #use part of processors
+	                startid2 = startid1 + mod(length(starttimelist), NP) - 1
+	                S = pmap(x -> seisdownload_NOISE(x, InputDict), startid1:startid2)
+    	        end
+
+                # save data to jld2
+                file = jldopen(fopath, "r+")
+                unavalilablefile = jldopen(join([fopath[1:end-5], "_unavailablestations.jld2"]), "w+")
+
+                for ii = 1:size(S)[1] #loop at each starttime
+                    for jj = 1:size(S[1])[1] #loop at each station id
+
+                        requeststr =S[ii][jj].id
+                        varname = joinpath(DLtimestamplist[startid1+ii-1], requeststr)
+                        #save_SeisData2JLD2(fopath, varname, S[ii][jj])
+                        file[varname] = S[ii][jj]
+
+                        if S[ii][jj].misc["dlerror"] == 1
+                            unavalilablefile[varname] = S[ii][jj]
+                        end
+                    end
+                end
+
+                JLD2.close(file)
+                JLD2.close(unavalilablefile)
+
+
+    	        pitr += max_num_of_processes_per_parallelcycle
+
+                println("pitr: $pitr")
+            end
+        end
 
     elseif  DownloadType == "Earthquake" || DownloadType == "earthquake"
-        println("Download type Earthquake Not implemented.")
+
+		InputDictionary = Dict([
+		      "DownloadType"    => DownloadType,
+		      "Method "         => method,
+		      "event"           => event,
+		      "reg"             => reg,
+		      "pre_filt"        => pre_filt,
+		      "fopath"          => fopath
+		    ])
+
+
+		Method		    = InputDict["stationinfo"]["stationlist"]
+		starttime       = InputDict["starttime"]
+		endtime         = InputDict["endtime"]
+		DL_time_unit    = InputDict["DL_time_unit"]
+		DownloadType    = InputDict["DownloadType"]
+		fopath          = InputDict["fopath"]
+
+		if mod((endtime - starttime).value,  DL_time_unit) != 0 || (endtime - starttime).value < DL_time_unit
+			error("Total download time cannot be devided by Download Time unit; this may cause unexpected result. abort.")
+		end
+
+		# calculate start time list (starttimelist) with each Donwload_time_unit
+		starttimelist = Utils.get_starttimelist(starttime, endtime, DL_time_unit)
+		# generate DLtimestamplist and ststationlist
+		DLtimestamplist = Utils.get_timestamplist(starttimelist)
+
+		InputDict["starttimelist"] = starttimelist
+		InputDict["DLtimestamplist"] = DLtimestamplist
+
+		#save info into jld2
+		jldopen(fopath, "w") do file
+			file["info/DLtimestamplist"] = DLtimestamplist;
+			file["info/stationlist"] = stationlist;
+			file["info/starttime"]   = string(starttime)
+			file["info/endtime"]     = string(endtime)
+			file["info/DL_time_unit"]= string(DL_time_unit)
+		end
+
+		#Test download to evaluate use of memory and estimate download time.
+		println("-------TEST DONWLOAD START-----------")
+		t = @elapsed Stest = seisdownload_NOISE(1, InputDict) #[s]
+		mem_per_requestid = 1.2 * sizeof(Stest) / 1073741824.0 #[GB] *for the safty, required memory is multiplied by 1.2
+
+		max_num_of_processes_per_parallelcycle = floor(Int64, MAX_MEM_PER_CPU/mem_per_requestid)
+		estimated_downloadtime = now() + Second(round(10 * t * length(starttimelist) / NP))
+
+		println(mem_per_requestid)
+		println(max_num_of_processes_per_parallelcycle)
+		println("-------DOWNLOAD STATS SUMMARY------")
+
+		println(@sprintf("Number of processors is %d.", NP))
+		println(@sprintf("Total download size will be %4.8f [GB].", mem_per_requestid * length(starttimelist)))
+		println(@sprintf("Download will finish at %s.", round(estimated_downloadtime, Dates.Second(1))))
+
+		println("-------START DOWNLOADING-----------")
+
+		if max_num_of_processes_per_parallelcycle < 1
+			error("Memory allocation is not enought (currently $MAX_MEM_PER_CPU [GB]). Please inclease MAX_MEM_PER_CPU or decrease number of stations")
+		end
+
+		if max_num_of_processes_per_parallelcycle >= length(starttimelist)
+
+			S = pmap(x -> seisdownload_NOISE(x, InputDict), 1:length(starttimelist))
+
+			# save data to jld2
+			file = jldopen(fopath, "r+")
+			unavalilablefile = jldopen(join([fopath[1:end-5], "_unavailablestations.jld2"]), "w+")
+
+			for ii = 1:size(S)[1] #loop at each starttime
+				for jj = 1:size(S[1])[1] #loop at each station id
+
+					requeststr =S[ii][jj].id
+					varname = joinpath(DLtimestamplist[ii], requeststr)
+					#save_SeisData2JLD2(fopath, varname, S[ii][jj])
+					file[varname] = S[ii][jj]
+
+					if S[ii][jj].misc["dlerror"] == 1
+						unavalilablefile[varname] = S[ii][jj]
+					end
+				end
+			end
+			JLD2.close(file)
+			JLD2.close(unavalilablefile)
+
+		else
+
+			#parallelization by time
+			pitr = 1
+
+			# progress bar
+
+			while pitr <=  length(starttimelist)
+
+				startid1 = pitr
+				startid2 = pitr + max_num_of_processes_per_parallelcycle - 1
+
+				if startid2 <= length(starttimelist)
+					#use all processors
+					S = pmap(x -> seisdownload_NOISE(x, InputDict), startid1:startid2)
+
+				else
+					#use part of processors
+					startid2 = startid1 + mod(length(starttimelist), NP) - 1
+					S = pmap(x -> seisdownload_NOISE(x, InputDict), startid1:startid2)
+				end
+
+				# save data to jld2
+				file = jldopen(fopath, "r+")
+				unavalilablefile = jldopen(join([fopath[1:end-5], "_unavailablestations.jld2"]), "w+")
+
+				for ii = 1:size(S)[1] #loop at each starttime
+					for jj = 1:size(S[1])[1] #loop at each station id
+
+						requeststr =S[ii][jj].id
+						varname = joinpath(DLtimestamplist[startid1+ii-1], requeststr)
+						#save_SeisData2JLD2(fopath, varname, S[ii][jj])
+						file[varname] = S[ii][jj]
+
+						if S[ii][jj].misc["dlerror"] == 1
+							unavalilablefile[varname] = S[ii][jj]
+						end
+					end
+				end
+
+				JLD2.close(file)
+				JLD2.close(unavalilablefile)
+
+
+				pitr += max_num_of_processes_per_parallelcycle
+
+				println("pitr: $pitr")
+			end
+		end
+
+
     else
         println("Download type is not known (chose Noise or Earthquake).")
     end
 
-    # save data to jld2
-    file = jldopen(fopath, "r+")
-    unavalilablefile = jldopen(join([fopath[1:end-5], "_unavailablestations.jld2"]), "w")
-
-    for ii = 1:size(S)[1] #loop at each starttime
-        for jj = 1:size(S[1])[1] #loop at each station id
-
-            requeststr =S[ii][jj].id
-            varname = joinpath(DLtimestamplist[ii], requeststr)
-            #save_SeisData2JLD2(fopath, varname, S[ii][jj])
-            file[varname] = S[ii][jj]
-
-            if S[ii][jj].misc["dlerror"] == 1
-                unavalilablefile[varname] = S[ii][jj]
-            end
-        end
-    end
-    JLD2.close(file)
-    JLD2.close(unavalilablefile)
-
-
     println("Downloading and Saving data is successfully done.\njob ended at "*string(now()))
+    return 0
 
 end
 

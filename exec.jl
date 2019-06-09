@@ -8,6 +8,7 @@ using .SeisDownload
 #==================================================#
 # Input Parameters
 NP = 4 # number of processor
+MAX_MEM_PER_CPU = 2.0 # [GB] maximum allocated memory for one cpu
 DownloadType = "Noise" # Choise of "Noise" or "Earthquake"
 
 network     = ["BP"]
@@ -78,4 +79,4 @@ InputDictionary = Dict([
 
 
 # mass request with input Dictionary
-SeisDownload.ParallelSeisrequest(NP, InputDictionary)
+SeisDownload.ParallelSeisrequest(NP, InputDictionary, MAX_MEM_PER_CPU=float(MAX_MEM_PER_CPU))
