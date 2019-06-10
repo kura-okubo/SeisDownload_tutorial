@@ -8,25 +8,27 @@ using .SeisDownload
 
 #==================================================#
 # Input Parameters
-NP = 2 # number of processor
+NP = 4 # number of processor
 MAX_MEM_PER_CPU = 2.0 # [GB] maximum allocated memory for one cpu
 DownloadType = "Earthquake" # Choise of "Noise" or "Earthquake"
 
 network     = ["NZ"]
 station     = ["*"]
 location    = ["*"]
-channel     = ["HH?"]
+#channel     = ["*"]
+channel     = ["HHZ"]
 
 #Specify region [lat_min, lat_max, lon_min, lon_max, dep_min, dep_max], with lat, lon in decimal degrees (°) and depth in km with + = down.
 #dep_min and dep_max is optional.
 #reg = [-46.1691, -40.0662, 166.6531, 176.3965, -2, 30]
 IsLocationBox = true
-locationbox = [-46.1691, -40.0662, 166.6531, 176.3965]
+#locationbox = [-46.1691, -40.0662, 166.6531, 176.3965]
+locationbox = [-49.1942, -30.6757, 160.2719, -174.4629]
 
 method  = "FDSN" # Method to download data.
 
 SecondsBeforePick = 10 # [s] start downloading `SecondsBeforePick`[s] before picked time
-SecondsAfterPick  = 2 * 60 # [s] end downloading `SecondsBeforePick`[s] after picked time
+SecondsAfterPick  = 10 * 60 # [s] end downloading `SecondsBeforePick`[s] after picked time
 
 # Time info for Noise case
 catalog  = "./Earthquake/fdsnws-event_example.xml"
@@ -68,7 +70,7 @@ for i = 1:Ne
 
     #---Lat-long test with one phase pick among all stations---#
 
-    Npicks = 2
+    Npicks = 1
     println("index of quake ", i, " Number of picks  ",Npicks)
 
     #event information
